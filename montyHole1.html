@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>モンティ・ホール問題（スマホ対応版）</title>
+    <style>
+        :root {
+            --door-color: #5d4037;
+            --door-border: #3e2723;
+            --bg-color: #f0f2f5;
+            --accent-color: #3498db;
+            --text-color: #333;
+            --win-color: #2ecc71;
+            --lose-color: #e74c3c;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px 10px;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        p.description {
+            max-width: 600px;
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        /* ゲームエリア（レスポンシブ対応） */
+        .game-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px; /* スマホ向けに隙間を狭く */
+            margin-bottom: 25px;
+            perspective: 1000px;
+            width: 100%;
+            max-width: 500px; /* PCでは広がりすぎないように */
+        }
+
+        .door-wrapper {
+            position: relative;
+            flex: 1; /* 均等に幅をとる */
+            max-width: 110px; /* 最大サイズ制限 */
+            aspect-ratio: 2 / 3; /* アスペクト比を維持 */
+            cursor: pointer;
+            /* タップ時のハイライトを無効化（スマホ用） */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ドアの後ろの中身 */
+        .prize-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #ddd;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: clamp(2rem, 8vw, 3rem); /* 画面幅に応じて可変 */
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1;
+        }
+
+        /* ドア本体 */
+        .door {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--door-color);
+            border: 3px solid var(--door-border);
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            z-index: 2;
+            transform-origin: left;
+            transition: transform 0.6s cubic-bezier(0.4, 2.08, 0.55, 0.44), box-shadow 0.3s;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.3);
+            backface-visibility: hidden; 
+        }
+
+        .door::after {
+            content: '';
+            position: absolute;
+            right: 8%;
+            top: 50%;
+            width: 12%;
+            padding-bottom: 12%; /* 正円を保つ */
+            background-color: gold;
+            border-radius: 50%;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        /* ドアの状態 */
+        .door.open {
+            transform: rotateY(-110deg);
+        }
+
+        /* スマホではhoverエフェクトが邪魔になることがあるので、PCのみ適用 */
+        @media (hover: hover) {
+            .door-wrapper:hover .door:not(.open) {
+                filter: brightness(1.1);
+            }
+        }
+
+        .door-wrapper.selected .door {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+        
+        /* 選択マーク */
+        .selection-indicator {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+        }
+        .door-wrapper.selected .selection-indicator {
+            opacity: 1;
+        }
+
+        /* コントロールとメッセージ */
+        .status-message {
+            font-size: 1rem;
+            font-weight: bold;
+            min-height: 3em; /* 2行になってもガタつかない高さ確保 */
+            margin-bottom: 15px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column; /* スマホでは縦並びの方が押しやすい場合も考慮 */
+            gap: 10px;
+            margin-bottom: 25px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        button {
+            padding: 12px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background-color: var(--accent-color);
+            color: white;
+            transition: background 0.2s, transform 0.1s;
+            width: 100%;
+            font-weight: bold;
+            touch-action: manipulation; /* タップの遅延を防止 */
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+            display: none; /* 無効時は非表示にしてスペースを詰める */
+        }
+
+        button.reset-btn {
+            background-color: #34495e;
+            display: block !important; /* リセットは常に表示 */
+        }
+
+        /* 統計エリア */
+        .stats-container {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .stats-title {
+            text-align: center;
+            margin: 0 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+            font-size: 1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: 5px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #7f8c8d;
+            margin-bottom: 2px;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+
+        .win-rate {
+            font-size: 0.85rem;
+            color: var(--win-color);
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>モンティ・ホール問題</h1>
+    <p class="description">
+        1. ドアをタップして選択<br>
+        2. ハズレのドアが開く<br>
+        3. 「変える」か「そのまま」か決断！
+    </p>
+
+    <div class="status-message" id="message">ドアを1つ選んでください</div>
+
+    <div class="game-container">
+        <div class="door-wrapper" id="door-0" onclick="handleDoorClick(0)">
+            <div class="prize-container" id="prize-0">🐐</div>
+            <div class="door" id="door-face-0">1</div>
+            <div class="selection-indicator">選択中</div>
+        </div>
+        <div class="door-wrapper" id="door-1" onclick="handleDoorClick(1)">
+            <div class="prize-container" id="prize-1">🐐</div>
+            <div class="door" id="door-face-1">2</div>
+            <div class="selection-indicator">選択中</div>
+        </div>
+        <div class="door-wrapper" id="door-2" onclick="handleDoorClick(2)">
+            <div class="prize-container" id="prize-2">🐐</div>
+            <div class="door" id="door-face-2">3</div>
+            <div class="selection-indicator">選択中</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="action-btn" onclick="confirmChoice()" disabled>決定 / 変更</button>
+        <button class="reset-btn" onclick="initGame()">リセットして次へ</button>
+    </div>
+
+    <div class="stats-container">
+        <h3 class="stats-title">ここまでの成績</h3>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-label">変えた場合</div>
+                <div class="stat-value"><span id="switch-win">0</span> / <span id="switch-total">0</span></div>
+                <div class="win-rate" id="switch-rate">勝率: 0%</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">変えない場合</div>
+                <div class="stat-value"><span id="stay-win">0</span> / <span id="stay-total">0</span></div>
+                <div class="win-rate" id="stay-rate">勝率: 0%</div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- ゲームの状態管理変数 ---
+    const STATE = {
+        PICK: 'pick',       // 最初の選択待ち
+        REVEAL: 'reveal',   // モンティがドアを開ける
+        DECIDE: 'decide',   // 変えるか変えないか選択待ち
+        RESULT: 'result'    // 結果発表済み
+    };
+
+    let currentState = STATE.PICK;
+    let prizeDoorIndex = -1;
+    let selectedDoorIndex = -1;
+    let openedDoorIndex = -1;
+    let initialPickIndex = -1; // 最初に選んだドア（統計用）
+    
+    let stats = {
+        switch: { wins: 0, total: 0 },
+        stay: { wins: 0, total: 0 }
+    };
+
+    const messageEl = document.getElementById('message');
+    const actionBtn = document.getElementById('action-btn');
+
+    function initGame() {
+        currentState = STATE.PICK;
+        selectedDoorIndex = -1;
+        openedDoorIndex = -1;
+        initialPickIndex = -1;
+        
+        // 当たりをランダムに決定
+        prizeDoorIndex = Math.floor(Math.random() * 3);
+
+        for (let i = 0; i < 3; i++) {
+            const doorWrapper = document.getElementById(`door-${i}`);
+            const doorFace = document.getElementById(`door-face-${i}`);
+            const prizeContent = document.getElementById(`prize-${i}`);
+            
+            doorWrapper.classList.remove('selected');
+            doorFace.classList.remove('open');
+            doorWrapper.style.cursor = 'pointer';
+            
+            prizeContent.textContent = (i === prizeDoorIndex) ? '🚗' : '🐐';
+        }
+
+        messageEl.textContent = "ドアを1つ選んでください";
+        messageEl.style.color = "#333";
+        
+        actionBtn.textContent = "決定 / 変更";
+        actionBtn.disabled = true;
+    }
+
+    function handleDoorClick(doorIndex) {
+        if (currentState === STATE.RESULT) return;
+        if (doorIndex === openedDoorIndex) return;
+
+        if (currentState === STATE.PICK) {
+            initialPickIndex = doorIndex; // 統計用に保存
+            selectDoor(doorIndex);
+            
+            messageEl.textContent = "モンティがハズレのドアを開けます...";
+            
+            // 少し待ってからモンティが開ける（演出）
+            setTimeout(montyOpensDoor, 800); 
+
+        } else if (currentState === STATE.DECIDE) {
+            selectDoor(doorIndex);
+            
+            // メッセージ更新
+            if (doorIndex === initialPickIndex) {
+                 messageEl.textContent = "「変えない」で決定しますか？";
+                 actionBtn.textContent = "変えないで決定";
+            } else {
+                 messageEl.textContent = "「変える」で決定しますか？";
+                 actionBtn.textContent = "変えて決定";
+            }
+            
+            actionBtn.disabled = false;
+        }
+    }
+
+    function selectDoor(index) {
+        selectedDoorIndex = index;
+        for (let i = 0; i < 3; i++) {
+            const el = document.getElementById(`door-${i}`);
+            if (i === index) {
+                el.classList.add('selected');
+            } else {
+                el.classList.remove('selected');
+            }
+        }
+    }
+
+    function montyOpensDoor() {
+        // 当たりではなく、かつユーザーが選んでいないドアを探す
+        const availableDoors = [0, 1, 2].filter(
+            i => i !== prizeDoorIndex && i !== selectedDoorIndex
+        );
+        
+        openedDoorIndex = availableDoors[Math.floor(Math.random() * availableDoors.length)];
+        document.getElementById(`door-face-${openedDoorIndex}`).classList.add('open');
+
+        currentState = STATE.DECIDE;
+        messageEl.textContent = `残りのドアを選び直せます。\nどうしますか？`;
+        
+        // デフォルトのボタンテキスト
+        actionBtn.textContent = "このまま決定";
+        actionBtn.disabled = false; // そのままでも決定できるようにする
+    }
+
+    function confirmChoice() {
+        if (currentState !== STATE.DECIDE) return;
+
+        currentState = STATE.RESULT;
+        actionBtn.disabled = true;
+
+        // 全てのドアを開ける
+        for (let i = 0; i < 3; i++) {
+            document.getElementById(`door-face-${i}`).classList.add('open');
+        }
+
+        const isWin = (selectedDoorIndex === prizeDoorIndex);
+        checkResult(isWin);
+    }
+
+    function checkResult(isWin) {
+        const didSwitch = (initialPickIndex !== selectedDoorIndex);
+        
+        if (isWin) {
+            messageEl.textContent = "おめでとう！当たりです！🚗";
+            messageEl.style.color = "var(--win-color)";
+        } else {
+            messageEl.textContent = "残念！ハズレです...🐐";
+            messageEl.style.color = "var(--lose-color)";
+        }
+
+        if (didSwitch) {
+            stats.switch.total++;
+            if (isWin) stats.switch.wins++;
+        } else {
+            stats.stay.total++;
+            if (isWin) stats.stay.wins++;
+        }
+        updateStatsUI();
+    }
+
+    function updateStatsUI() {
+        // 変えた場合
+        document.getElementById('switch-win').textContent = stats.switch.wins;
+        document.getElementById('switch-total').textContent = stats.switch.total;
+        const switchRate = stats.switch.total === 0 ? 0 : Math.round((stats.switch.wins / stats.switch.total) * 100);
+        document.getElementById('switch-rate').textContent = `勝率: ${switchRate}%`;
+
+        // 変えなかった場合
+        document.getElementById('stay-win').textContent = stats.stay.wins;
+        document.getElementById('stay-total').textContent = stats.stay.total;
+        const stayRate = stats.stay.total === 0 ? 0 : Math.round((stats.stay.wins / stats.stay.total) * 100);
+        document.getElementById('stay-rate').textContent = `勝率: ${stayRate}%`;
+    }
+
+    // 初期化実行
+    initGame();
+
+</script>
+</body>
+</html>
